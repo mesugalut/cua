@@ -28,6 +28,7 @@ class BaseLoop(ABC):
         retry_delay: float = 1.0,
         base_dir: Optional[str] = "trajectories",
         save_trajectory: bool = True,
+        save_messages: bool = True,
         only_n_most_recent_images: Optional[int] = 2,
         callback_handlers: Optional[List[CallbackHandler]] = None,
         **kwargs,
@@ -63,7 +64,7 @@ class BaseLoop(ABC):
         )
 
         # Initialize experiment manager
-        if self.save_trajectory and self.base_dir:
+        if (self.save_trajectory or self.save_messages) and self.base_dir:
             self.experiment_manager = ExperimentManager(
                 base_dir=self.base_dir,
                 only_n_most_recent_images=only_n_most_recent_images,

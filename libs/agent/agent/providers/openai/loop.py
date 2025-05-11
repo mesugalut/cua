@@ -74,6 +74,7 @@ class OpenAILoop(BaseLoop):
             retry_delay=retry_delay,
             base_dir=base_dir,
             save_trajectory=save_trajectory,
+            save_messages=save_messages,
             only_n_most_recent_images=only_n_most_recent_images,
             **kwargs,
         )
@@ -159,8 +160,8 @@ class OpenAILoop(BaseLoop):
             # Wait for loop to complete
             await loop_task
 
-            if self.messages is not None:
-                with open(os.path.join(self.base_dir, "messages.json"), "w") as f:
+            if self.messages is not None and self.run_dir is not None:
+                with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
                     json.dump(self.messages, f)
 
             # Send completion message
