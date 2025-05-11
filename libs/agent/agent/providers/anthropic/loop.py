@@ -1,7 +1,9 @@
 """Anthropic-specific agent loop implementation."""
 
-import logging
 import asyncio
+import json
+import logging
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, cast
 from anthropic.types.beta import (
     BetaMessage,
@@ -62,6 +64,7 @@ class AnthropicLoop(BaseLoop):
         max_retries: int = 3,
         retry_delay: float = 1.0,
         save_trajectory: bool = True,
+        save_messages: bool = True,
         **kwargs,
     ):
         """Initialize the Anthropic loop.
@@ -101,6 +104,7 @@ class AnthropicLoop(BaseLoop):
         self.tool_manager = None
         self.callback_manager = None
         self.queue = asyncio.Queue()  # Initialize queue
+        self.messages = [] if save_messages else None
 
         # Initialize handlers
         self.api_handler = AnthropicAPIHandler(self)
@@ -185,6 +189,10 @@ class AnthropicLoop(BaseLoop):
 
             # Wait for loop to complete
             await loop_task
+
+            if self.messages is not None:
+                with open(os.path.join(self.base_dir, "messages.json"), "w") as f:
+                    json.dump(self.messages, f)
 
             # Send completion message
             yield {

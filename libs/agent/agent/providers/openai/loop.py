@@ -1,8 +1,10 @@
 """OpenAI Agent Response API provider implementation."""
 
-import logging
 import asyncio
 import base64
+import json
+import logging
+import os
 from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, Awaitable, TYPE_CHECKING
 
 from computer import Computer
@@ -40,6 +42,7 @@ class OpenAILoop(BaseLoop):
         retry_delay: float = 1.0,
         save_trajectory: bool = True,
         acknowledge_safety_check_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
+        save_messages: bool = True,
         **kwargs,
     ):
         """Initialize the OpenAI loop.
@@ -87,6 +90,7 @@ class OpenAILoop(BaseLoop):
         self.acknowledge_safety_check_callback = acknowledge_safety_check_callback
         self.queue = asyncio.Queue()  # Initialize queue
         self.last_response_id = None  # Store the last response ID across runs
+        self.messages = [] if save_messages else None
 
         # Initialize handlers
         self.api_handler = OpenAIAPIHandler(self)
@@ -154,6 +158,10 @@ class OpenAILoop(BaseLoop):
 
             # Wait for loop to complete
             await loop_task
+
+            if self.messages is not None:
+                with open(os.path.join(self.base_dir, "messages.json"), "w") as f:
+                    json.dump(self.messages, f)
 
             # Send completion message
             yield {
@@ -294,6 +302,8 @@ class OpenAILoop(BaseLoop):
                                 for content in item.get("content", []):
                                     if content.get("type") == "output_text" and (txt := content.get("text")):
                                         logger.info("Message: %s", txt)
+                                        if self.messages is not None:
+                                            self.messages.append(txt)
 
                     if not computer_calls:
                         logger.info("No computer calls in response, task may be complete.")
