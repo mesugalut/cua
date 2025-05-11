@@ -23,7 +23,7 @@ from ...core.types import AgentResponse
 # Anthropic provider-specific imports
 from .api.client import AnthropicClientFactory, BaseAnthropicClient
 from .tools.manager import ToolManager
-from .prompts import SYSTEM_PROMPT
+from .prompts import get_system_prompt
 from .types import LLMProvider
 from .tools import ToolResult
 from .utils import to_anthropic_format, to_agent_response_format
@@ -263,7 +263,7 @@ class AnthropicLoop(BaseLoop):
                 # Use API handler to make API call with Anthropic format
                 response = await self.api_handler.make_api_call(
                     messages=cast(List[BetaMessageParam], anthropic_messages),
-                    system_prompt=system_content or SYSTEM_PROMPT,
+                    system_prompt=system_content or get_system_prompt(self.computer.os_type),
                 )
 
                 # Use response handler to handle the response and get new messages
