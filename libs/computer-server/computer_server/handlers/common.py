@@ -1,6 +1,6 @@
 import base64
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .base import BaseAutomationHandler
 

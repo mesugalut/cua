@@ -13,7 +13,7 @@ except Exception:
 try:
     from .windows import WindowsAccessibilityHandler, WindowsAutomationHandler
     HANDLER_TYPES["windows"] = (WindowsAccessibilityHandler, WindowsAutomationHandler)
-except Exception as e:
+except Exception:
     pass
 
 if not HANDLER_TYPES:
