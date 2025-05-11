@@ -521,6 +521,8 @@ class AnthropicLoop(BaseLoop):
             if text == "<DONE>":
                 return
             logger.info(f"Assistant: {text}")
+            if self.messages is not None:
+                self.messages.append(text)
 
     def _handle_tool_result(self, result, tool_id):
         """Handle tool execution results."""

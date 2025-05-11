@@ -199,6 +199,8 @@ class ComputerTool(BaseComputerTool, BaseAnthropicTool):
         elif action in ("left_click", "right_click", "double_click"):
             if coordinate:
                 x, y = coordinate
+                x = int(x * 1.7)
+                y = int(y * 1.7)
                 self.logger.info(f"Handling {action} action:")
                 self.logger.info(f"  Coordinates: ({x}, {y})")
 
