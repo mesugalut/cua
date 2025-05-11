@@ -192,7 +192,7 @@ class AnthropicLoop(BaseLoop):
             await self.loop_task
 
             if self.messages is not None:
-                with open(os.path.join(self.base_dir, "messages.json"), "w") as f:
+                with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
                     json.dump(self.messages, f)
 
             # Send completion message
