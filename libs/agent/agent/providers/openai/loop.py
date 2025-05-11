@@ -91,6 +91,7 @@ class OpenAILoop(BaseLoop):
         self.acknowledge_safety_check_callback = acknowledge_safety_check_callback
         self.queue = asyncio.Queue()  # Initialize queue
         self.last_response_id = None  # Store the last response ID across runs
+        self.loop_task = None  # Store the loop task for cancellation
         self.messages = [] if save_messages else None
 
         # Initialize handlers
@@ -143,7 +144,7 @@ class OpenAILoop(BaseLoop):
             await self.tool_manager.initialize()
 
             # Start loop in background task
-            loop_task = asyncio.create_task(self._run_loop(queue, messages))
+            self.loop_task = asyncio.create_task(self._run_loop(queue, messages))
 
             # Process and yield messages as they arrive
             while True:
@@ -158,7 +159,11 @@ class OpenAILoop(BaseLoop):
                     continue
 
             # Wait for loop to complete
-            await loop_task
+            await self.loop_task
+
+            if self.messages is not None and self.run_dir is not None:
+                with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
+                    json.dump(self.messages, f)
 
             if self.messages is not None and self.run_dir is not None:
                 with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
@@ -178,6 +183,31 @@ class OpenAILoop(BaseLoop):
                 "content": f"Error: {str(e)}",
                 "metadata": {"title": "❌ Error"},
             }
+            
+    async def cancel(self) -> None:
+        """Cancel the currently running agent loop task.
+        
+        This method stops the ongoing processing in the agent loop
+        by cancelling the loop_task if it exists and is running.
+        """
+        if self.loop_task and not self.loop_task.done():
+            logger.info("Cancelling OpenAI loop task")
+            self.loop_task.cancel()
+            try:
+                # Wait for the task to be cancelled with a timeout
+                await asyncio.wait_for(self.loop_task, timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Timeout while waiting for loop task to cancel")
+            except asyncio.CancelledError:
+                logger.info("Loop task cancelled successfully")
+            except Exception as e:
+                logger.error(f"Error while cancelling loop task: {str(e)}")
+            finally:
+                # Put None in the queue to signal any waiting consumers to stop
+                await self.queue.put(None)
+                logger.info("OpenAI loop task cancelled")
+        else:
+            logger.info("No active OpenAI loop task to cancel")
 
     ###########################################
     # AGENT LOOP IMPLEMENTATION
@@ -210,16 +240,7 @@ class OpenAILoop(BaseLoop):
 
                 # Emit screenshot callbacks
                 await self.handle_screenshot(screenshot_base64, action_type="initial_state")
-
-                # Save screenshot if requested
-                if self.save_trajectory:
-                    # Ensure screenshot_base64 is a string
-                    if not isinstance(screenshot_base64, str):
-                        logger.warning(
-                            "Converting non-string screenshot_base64 to string for _save_screenshot"
-                        )
-                    self._save_screenshot(screenshot_base64, action_type="state")
-                    logger.info("Screenshot saved to trajectory")
+                self._save_screenshot(screenshot_base64, action_type="state")
 
                 # First add any existing user messages that were passed to run()
                 user_query = None
@@ -285,6 +306,10 @@ class OpenAILoop(BaseLoop):
                     )
                     # Don't reset last_response_id to None - keep the previous value if available
 
+
+                # Log standardized response for ease of parsing
+                # Since this is the openAI responses format, we don't need to convert it to agent response format
+                self._log_api_call("agent_response", request=None, response=response)
                 # Process API response
                 await queue.put(response)
 
@@ -365,6 +390,7 @@ class OpenAILoop(BaseLoop):
                         # Process screenshot through hooks
                         action_type = f"after_{action.get('type', 'action')}"
                         await self.handle_screenshot(screenshot_base64, action_type=action_type)
+                        self._save_screenshot(screenshot_base64, action_type=action_type)
 
                         # Create computer_call_output
                         computer_call_output = {
@@ -411,6 +437,7 @@ class OpenAILoop(BaseLoop):
 
                         # Process the response
                         # await self.response_handler.process_response(response, queue)
+                        self._log_api_call("agent_response", request=None, response=response)
                         await queue.put(response)
                     except Exception as e:
                         logger.error(f"Error executing computer action: {str(e)}")

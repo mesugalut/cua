@@ -66,6 +66,7 @@ class Computer:
         self.image = image
         self.port = port
         self.pylume_host = pylume_host
+        self.os_type = os_type
 
         # Store telemetry preference
         self._telemetry_enabled = telemetry_enabled
@@ -127,8 +128,8 @@ class Computer:
         self.shared_paths = []
         if shared_directories:
             for path in shared_directories:
-                abs_path = os.path.abspath(os.path.expanduser(path))  # type: ignore[attr-defined]
-                if not os.path.exists(abs_path):  # type: ignore[attr-defined]
+                abs_path = os.path.abspath(os.path.expanduser(path))
+                if not os.path.exists(abs_path):
                     raise ValueError(f"Shared directory does not exist: {path}")
                 self.shared_paths.append(abs_path)
         self._pylume_context = None

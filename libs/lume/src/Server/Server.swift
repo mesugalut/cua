@@ -44,7 +44,10 @@ final class Server {
         func extractParams(_ request: HTTPRequest) -> [String: String] {
             var params: [String: String] = [:]
             let routeParts = path.split(separator: "/")
-            let requestParts = request.path.split(separator: "/")
+            
+            // Split request path to remove query parameters
+            let requestPathOnly = request.path.split(separator: "?", maxSplits: 1)[0]
+            let requestParts = requestPathOnly.split(separator: "/")
 
             for (routePart, requestPart) in zip(routeParts, requestParts) {
                 if routePart.hasPrefix(":") {
@@ -179,8 +182,21 @@ final class Server {
                         return HTTPResponse(statusCode: .badRequest, body: "Missing VM name")
                     }
 
-                    // Extract storage from query params if present
-                    let storage = self.extractQueryParam(request: request, name: "storage")
+                    Logger.info("Processing stop VM request", metadata: ["method": request.method, "path": request.path])
+
+                    // Extract storage from the request body
+                    var storage: String? = nil
+                    if let bodyData = request.body, !bodyData.isEmpty {
+                        do {
+                            if let json = try JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+                               let bodyStorage = json["storage"] as? String {
+                                storage = bodyStorage
+                                Logger.info("Extracted storage from request body", metadata: ["storage": bodyStorage])
+                            }
+                        } catch {
+                            Logger.error("Failed to parse request body JSON", metadata: ["error": error.localizedDescription])
+                        }
+                    }
 
                     return try await self.handleStopVM(name: name, storage: storage)
                 }),
@@ -248,6 +264,20 @@ final class Server {
                     }
                     return try await self.handleRemoveLocation(name)
                 }),
+            
+            // Logs retrieval route
+            Route(
+                method: "GET", path: "/lume/logs",
+                handler: { [weak self] request in
+                    guard let self else { throw HTTPError.internalError }
+                    
+                    // Extract query parameters
+                    let type = self.extractQueryParam(request: request, name: "type") // "info", "error", or "all"
+                    let linesParam = self.extractQueryParam(request: request, name: "lines")
+                    let lines = linesParam.flatMap { Int($0) } // Convert to Int if present
+                    
+                    return try await self.handleGetLogs(type: type, lines: lines)
+                }),
             Route(
                 method: "POST", path: "/lume/config/locations/default/:name",
                 handler: { [weak self] request in
@@ -274,10 +304,16 @@ final class Server {
 
     // Helper to extract query parameters from the URL
     private func extractQueryParam(request: HTTPRequest, name: String) -> String? {
-        if let urlComponents = URLComponents(string: request.path),
-            let queryItems = urlComponents.queryItems
+        // Extract only the query part by splitting on '?'
+        let parts = request.path.split(separator: "?", maxSplits: 1)
+        guard parts.count > 1 else { return nil } // No query parameters
+        
+        let queryString = String(parts[1])
+        // Create a placeholder URL with the query string
+        if let urlComponents = URLComponents(string: "http://placeholder.com?"+queryString),
+           let queryItems = urlComponents.queryItems
         {
-            return queryItems.first(where: { $0.name == name })?.value
+            return queryItems.first(where: { $0.name == name })?.value?.removingPercentEncoding
         }
         return nil
     }

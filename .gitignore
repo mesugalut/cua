@@ -248,5 +248,8 @@ trajectories/
 # Lumier Storage
 storage/
 
+# Trashes
+.Trashes
+
 # vim
 *.swp

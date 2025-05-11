@@ -17,12 +17,13 @@ from ...core.types import AgentResponse, LLMProvider
 from ...core.visualization import VisualizationHelper
 from computer import Computer
 
-from .utils import add_box_token, parse_actions, parse_action_parameters
+from .utils import add_box_token, parse_actions, parse_action_parameters, to_agent_response_format
 from .tools.manager import ToolManager
 from .tools.computer import ToolResult
 from .prompts import COMPUTER_USE, SYSTEM_PROMPT, MAC_SPECIFIC_NOTES
 
 from .clients.oaicompat import OAICompatClient
+from .clients.mlxvlm import MLXVLMUITarsClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class UITARSLoop(BaseLoop):
         computer: Computer,
         api_key: str,
         model: str,
+        provider: Optional[LLMProvider] = None,
         provider_base_url: Optional[str] = "http://localhost:8000/v1",
         only_n_most_recent_images: Optional[int] = 2,
         base_dir: Optional[str] = "trajectories",
@@ -64,9 +66,10 @@ class UITARSLoop(BaseLoop):
             max_retries: Maximum number of retries for API calls
             retry_delay: Delay between retries in seconds
             save_trajectory: Whether to save trajectory data
+            provider: The LLM provider to use (defaults to OAICOMPAT if not specified)
         """
         # Set provider before initializing base class
-        self.provider = LLMProvider.OAICOMPAT
+        self.provider = provider or LLMProvider.OAICOMPAT
         self.provider_base_url = provider_base_url
 
         # Initialize message manager with image retention config
@@ -90,6 +93,7 @@ class UITARSLoop(BaseLoop):
         # Set API client attributes
         self.client = None
         self.retry_count = 0
+        self.loop_task = None  # Store the loop task for cancellation
 
         # Initialize visualization helper
         self.viz_helper = VisualizationHelper(agent=self)
@@ -113,7 +117,7 @@ class UITARSLoop(BaseLoop):
             logger.error(f"Error initializing tool manager: {str(e)}")
             logger.warning("Will attempt to initialize tools on first use.")
 
-        # Initialize client for the OAICompat provider
+        # Initialize client for the selected provider
         try:
             await self.initialize_client()
         except Exception as e:
@@ -128,18 +132,28 @@ class UITARSLoop(BaseLoop):
         """Initialize the appropriate client.
 
         Implements abstract method from BaseLoop to set up the specific
-        provider client (OAICompat for UI-TARS).
+        provider client based on the configured provider.
         """
         try:
-            logger.info(f"Initializing OAICompat client for UI-TARS with model {self.model}...")
-
-            self.client = OAICompatClient(
-                api_key=self.api_key or "EMPTY",  # Local endpoints typically don't require an API key
-                model=self.model,
-                provider_base_url=self.provider_base_url,
-            )
-
-            logger.info(f"Initialized OAICompat client with model {self.model}")
+            if self.provider == LLMProvider.MLXVLM:
+                logger.info(f"Initializing MLX VLM client for UI-TARS with model {self.model}...")
+                
+                self.client = MLXVLMUITarsClient(
+                    model=self.model,
+                )
+                
+                logger.info(f"Initialized MLX VLM client with model {self.model}")
+            else:
+                # Default to OAICompat client for other providers
+                logger.info(f"Initializing OAICompat client for UI-TARS with model {self.model}...")
+                
+                self.client = OAICompatClient(
+                    api_key=self.api_key or "EMPTY",  # Local endpoints typically don't require an API key
+                    model=self.model,
+                    provider_base_url=self.provider_base_url,
+                )
+                
+                logger.info(f"Initialized OAICompat client with model {self.model}")
         except Exception as e:
             logger.error(f"Error initializing client: {str(e)}")
             self.client = None
@@ -440,7 +454,7 @@ class UITARSLoop(BaseLoop):
     # MAIN LOOP - IMPLEMENTING ABSTRACT METHOD
     ###########################################
 
-    async def run(self, messages: List[Dict[str, Any]]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def run(self, messages: List[Dict[str, Any]]) -> AsyncGenerator[AgentResponse, None]:
         """Run the agent loop with provided messages.
 
         Args:
@@ -452,7 +466,31 @@ class UITARSLoop(BaseLoop):
         # Initialize the message manager with the provided messages
         self.message_manager.messages = messages.copy()
         logger.info(f"Starting UITARSLoop run with {len(self.message_manager.messages)} messages")
+        
+        # Create a task to run the loop
+        self.loop_task = asyncio.create_task(self._run_loop(messages))
 
+        # Yield from the loop task
+        try:
+            async for response in self.loop_task:
+                yield response
+        except Exception as e:
+            logger.error(f"Error in run method: {str(e)}")
+            yield {
+                "role": "assistant",
+                "content": f"Error: {str(e)}",
+                "metadata": {"title": "❌ Error"},
+            }
+            
+    async def _run_loop(self, messages: List[Dict[str, Any]]) -> AsyncGenerator[AgentResponse, None]:
+        """Internal method to run the agent loop with provided messages.
+        
+        Args:
+            messages: List of messages in standard OpenAI format
+            
+        Yields:
+            Agent response format
+        """
         # Continue running until explicitly told to stop
         running = True
         turn_created = False
@@ -507,41 +545,16 @@ class UITARSLoop(BaseLoop):
 
                 # Update whether an action screenshot was saved this turn
                 action_screenshot_saved = action_screenshot_saved or new_screenshot_saved
-
-                # Parse actions from the raw response
-                raw_response = response["choices"][0]["message"]["content"]
-                parsed_actions = parse_actions(raw_response)
                 
-                # Extract thought content if available
-                thought = ""
-                if "Thought:" in raw_response:
-                    thought_match = re.search(r"Thought: (.*?)(?=\s*Action:|$)", raw_response, re.DOTALL)
-                    if thought_match:
-                        thought = thought_match.group(1).strip()
+                agent_response = await to_agent_response_format(
+                    response,
+                    messages,
+                    model=self.model,
+                )
+                # Log standardized response for ease of parsing
+                self._log_api_call("agent_response", request=None, response=agent_response)
+                yield agent_response
                 
-                # Create standardized thought response format
-                thought_response = {
-                    "role": "assistant",
-                    "content": thought or raw_response,
-                    "metadata": {
-                        "title": "🧠 UI-TARS Thoughts"
-                    }
-                }
-                
-                # Create action response format
-                action_response = {
-                    "role": "assistant",
-                    "content": str(parsed_actions),
-                    "metadata": {
-                        "title": "🖱️ UI-TARS Actions",
-                    }
-                }
-
-                # Yield both responses to the caller (thoughts first, then actions)
-                yield thought_response
-                if parsed_actions:
-                    yield action_response
-
                 # Check if we should continue this conversation
                 running = should_continue
 
@@ -562,12 +575,36 @@ class UITARSLoop(BaseLoop):
                     logger.error(f"Maximum retry attempts reached. Last error was: {str(e)}")
 
                 yield {
-                    "error": str(e),
+                    "role": "assistant",
+                    "content": f"Error: {str(e)}",
                     "metadata": {"title": "❌ Error"},
                 }
 
                 # Create a brief delay before retrying
                 await asyncio.sleep(1)
+
+    async def cancel(self) -> None:
+        """Cancel the currently running agent loop task.
+        
+        This method stops the ongoing processing in the agent loop
+        by cancelling the loop_task if it exists and is running.
+        """
+        if self.loop_task and not self.loop_task.done():
+            logger.info("Cancelling UITARS loop task")
+            self.loop_task.cancel()
+            try:
+                # Wait for the task to be cancelled with a timeout
+                await asyncio.wait_for(self.loop_task, timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Timeout while waiting for loop task to cancel")
+            except asyncio.CancelledError:
+                logger.info("Loop task cancelled successfully")
+            except Exception as e:
+                logger.error(f"Error while cancelling loop task: {str(e)}")
+            finally:
+                logger.info("UITARS loop task cancelled")
+        else:
+            logger.info("No active UITARS loop task to cancel")
 
     ###########################################
     # UTILITY METHODS
