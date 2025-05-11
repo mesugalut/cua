@@ -53,6 +53,39 @@ class PyAutoGUIAutomationHandler(BaseAutomationHandler):
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+    async def drag(
+        self, path: List[Tuple[int, int]], button: str = "left", duration: float = 0.5
+    ) -> Dict[str, Any]:
+        try:
+            if not path or len(path) < 2:
+                return {"success": False, "error": "Path must contain at least 2 points"}
+            
+            # Move to the first point
+            start_x, start_y = path[0]
+            pyautogui.moveTo(start_x, start_y)
+            
+            # Press the mouse button
+            pyautogui.mouseDown(button=button)
+            
+            # Calculate time between points to distribute duration evenly
+            step_duration = duration / (len(path) - 1) if len(path) > 1 else duration
+            
+            # Move through each subsequent point
+            for x, y in path[1:]:
+                pyautogui.moveTo(x, y, duration=step_duration)
+            
+            # Release the mouse button
+            pyautogui.mouseUp(button=button)
+            
+            return {"success": True}
+        except Exception as e:
+            # Make sure to release the mouse button if an error occurs
+            try:
+                pyautogui.mouseUp(button=button)
+            except:
+                pass
+            return {"success": False, "error": str(e)}
 
     # Keyboard Actions
     async def type_text(self, text: str) -> Dict[str, Any]:
