@@ -195,10 +195,6 @@ class AnthropicLoop(BaseLoop):
                 with open(os.path.join(self.base_dir, "messages.json"), "w") as f:
                     json.dump(self.messages, f)
 
-            if self.messages is not None:
-                with open(os.path.join(self.base_dir, "messages.json"), "w") as f:
-                    json.dump(self.messages, f)
-
             # Send completion message
             yield {
                 "role": "assistant",

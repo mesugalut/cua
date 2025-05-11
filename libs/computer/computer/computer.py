@@ -124,7 +124,6 @@ class Computer:
 
         # Initialize with proper typing - None at first, will be set in run()
         self._interface = None
-        self.os_type = os_type
         self.shared_paths = []
         if shared_directories:
             for path in shared_directories:

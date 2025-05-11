@@ -165,10 +165,6 @@ class OpenAILoop(BaseLoop):
                 with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
                     json.dump(self.messages, f)
 
-            if self.messages is not None and self.run_dir is not None:
-                with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
-                    json.dump(self.messages, f)
-
             # Send completion message
             yield {
                 "role": "assistant",
