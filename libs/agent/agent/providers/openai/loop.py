@@ -284,9 +284,16 @@ class OpenAILoop(BaseLoop):
                 while not task_complete:
                     # Check if there are any computer calls
                     output_items = response.get("output", []) or []
-                    computer_calls = [
-                        item for item in output_items if item.get("type") == "computer_call"
-                    ]
+                    computer_calls = []
+
+                    for item in output_items:
+                        match item.get("type"):
+                            case "computer_call":
+                                computer_calls.append(item)
+                            case "message":
+                                for content in item.get("content", []):
+                                    if content.get("type") == "output_text" and (txt := content.get("text")):
+                                        logger.info("Message: %s", txt)
 
                     if not computer_calls:
                         logger.info("No computer calls in response, task may be complete.")
