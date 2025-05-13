@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, Awaitable, TYPE_CHECKING
 
 from computer import Computer
@@ -43,6 +44,8 @@ class OpenAILoop(BaseLoop):
         save_trajectory: bool = True,
         acknowledge_safety_check_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
         save_messages: bool = True,
+        max_turns: int | None = 150,
+        max_time: float | None = 60 * 10,  # 10 minutes
         **kwargs,
     ):
         """Initialize the OpenAI loop.
@@ -93,6 +96,9 @@ class OpenAILoop(BaseLoop):
         self.last_response_id = None  # Store the last response ID across runs
         self.loop_task = None  # Store the loop task for cancellation
         self.messages = [] if save_messages else None
+
+        self.max_turns = max_turns
+        self.max_time = max_time
 
         # Initialize handlers
         self.api_handler = OpenAIAPIHandler(self)
@@ -311,7 +317,12 @@ class OpenAILoop(BaseLoop):
 
                 # Loop to continue processing responses until task is complete
                 task_complete = False
+                start_time = time.time()
                 while not task_complete:
+                    # Check if we've reached the max number of turns
+                    if (self.max_turns is not None and self.turn_count > self.max_turns) or (self.max_time is not None and time.time() - start_time > self.max_time):
+                        raise TimeoutError("Max turns or time reached")
+
                     # Check if there are any computer calls
                     output_items = response.get("output", []) or []
                     computer_calls = []
