@@ -389,7 +389,7 @@ class Computer:
         if self.running_server_host:
             return None
 
-        timeout = 600  # 10 minutes timeout (increased from 4 minutes)
+        timeout = 900  # 15 minutes timeout (increased from 4 minutes and then from 10)
         interval = 2.0  # 2 seconds between checks (increased to reduce API load)
         start_time = time.time()
         last_status = None

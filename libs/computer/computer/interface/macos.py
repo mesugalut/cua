@@ -212,7 +212,7 @@ class MacOSComputerInterface(BaseComputerInterface):
 
         raise last_error if last_error else RuntimeError("Failed to send command")
 
-    async def wait_for_ready(self, timeout: int = 60, interval: float = 1.0):
+    async def wait_for_ready(self, timeout: int = 120, interval: float = 1.0):
         """Wait for WebSocket connection to become available."""
         start_time = time.time()
         last_error = None

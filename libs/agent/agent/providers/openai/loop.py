@@ -44,7 +44,7 @@ class OpenAILoop(BaseLoop):
         save_trajectory: bool = True,
         acknowledge_safety_check_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
         save_messages: bool = True,
-        max_turns: int | None = 150,
+        max_turns: int | None = 100,
         max_time: float | None = 60 * 10,  # 10 minutes
         **kwargs,
     ):
@@ -464,6 +464,7 @@ class OpenAILoop(BaseLoop):
                         "role": "assistant",
                         "content": f"Error capturing screenshot: {str(e)}",
                         "metadata": {"title": "❌ Error"},
+                        "error": str(e),
                     }
                 )
                 await queue.put(None)  # Signal that we're done
@@ -479,6 +480,7 @@ class OpenAILoop(BaseLoop):
                     "role": "assistant",
                     "content": f"Error: {str(e)}",
                     "metadata": {"title": "❌ Error"},
+                    "error": str(e)
                 }
             )
             await queue.put(None)  # Signal that we're done
