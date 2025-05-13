@@ -31,6 +31,7 @@ class ComputerAgent:
         trajectory_dir: str = "trajectories",
         only_n_most_recent_images: Optional[int] = None,
         verbosity: int = logging.INFO,
+        save_messages: bool = True,
     ):
         """Initialize the ComputerAgent.
 
@@ -54,6 +55,7 @@ class ComputerAgent:
         self.queue = asyncio.Queue()
         self.screenshot_dir = screenshot_dir
         self.log_dir = log_dir
+        self.save_messages = save_messages
         self._retry_count = 0
         self._initialized = False
         self._in_context = False
@@ -107,6 +109,7 @@ class ComputerAgent:
                 trajectory_dir=trajectory_dir,
                 only_n_most_recent_images=only_n_most_recent_images,
                 provider_base_url=self.provider_base_url,
+                save_messages=self.save_messages,
             )
         except ValueError as e:
             logger.error(f"Failed to create loop: {str(e)}")

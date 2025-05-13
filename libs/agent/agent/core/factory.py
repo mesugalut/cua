@@ -30,6 +30,7 @@ class LoopFactory:
         only_n_most_recent_images: Optional[int] = None,
         acknowledge_safety_check_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
         provider_base_url: Optional[str] = None,
+        save_messages: bool = True,
     ) -> BaseLoop:
         """Create and return an appropriate loop instance based on type."""
         if loop_type == AgentLoop.ANTHROPIC:
@@ -49,6 +50,7 @@ class LoopFactory:
                 save_trajectory=save_trajectory,
                 base_dir=trajectory_dir,
                 only_n_most_recent_images=only_n_most_recent_images,
+                save_messages=save_messages,
             )
         elif loop_type == AgentLoop.OPENAI:
             # Lazy import OpenAILoop only when needed
@@ -68,6 +70,7 @@ class LoopFactory:
                 base_dir=trajectory_dir,
                 only_n_most_recent_images=only_n_most_recent_images,
                 acknowledge_safety_check_callback=acknowledge_safety_check_callback,
+                save_messages=save_messages,
             )
         elif loop_type == AgentLoop.OMNI:
             # Lazy import OmniLoop and related classes only when needed

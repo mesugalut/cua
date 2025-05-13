@@ -1,8 +1,11 @@
 """OpenAI Agent Response API provider implementation."""
 
-import logging
 import asyncio
 import base64
+import json
+import logging
+import os
+import time
 from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, Awaitable, TYPE_CHECKING
 
 from computer import Computer
@@ -40,6 +43,9 @@ class OpenAILoop(BaseLoop):
         retry_delay: float = 1.0,
         save_trajectory: bool = True,
         acknowledge_safety_check_callback: Optional[Callable[[str], Awaitable[bool]]] = None,
+        save_messages: bool = True,
+        max_turns: int | None = 150,
+        max_time: float | None = 60 * 10,  # 10 minutes
         **kwargs,
     ):
         """Initialize the OpenAI loop.
@@ -71,6 +77,7 @@ class OpenAILoop(BaseLoop):
             retry_delay=retry_delay,
             base_dir=base_dir,
             save_trajectory=save_trajectory,
+            save_messages=save_messages,
             only_n_most_recent_images=only_n_most_recent_images,
             **kwargs,
         )
@@ -88,6 +95,10 @@ class OpenAILoop(BaseLoop):
         self.queue = asyncio.Queue()  # Initialize queue
         self.last_response_id = None  # Store the last response ID across runs
         self.loop_task = None  # Store the loop task for cancellation
+        self.messages = [] if save_messages else None
+
+        self.max_turns = max_turns
+        self.max_time = max_time
 
         # Initialize handlers
         self.api_handler = OpenAIAPIHandler(self)
@@ -155,6 +166,10 @@ class OpenAILoop(BaseLoop):
 
             # Wait for loop to complete
             await self.loop_task
+
+            if self.messages is not None and self.run_dir is not None:
+                with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
+                    json.dump(self.messages, f)
 
             # Send completion message
             yield {
@@ -302,12 +317,26 @@ class OpenAILoop(BaseLoop):
 
                 # Loop to continue processing responses until task is complete
                 task_complete = False
+                start_time = time.time()
                 while not task_complete:
+                    # Check if we've reached the max number of turns
+                    if (self.max_turns is not None and self.turn_count > self.max_turns) or (self.max_time is not None and time.time() - start_time > self.max_time):
+                        raise TimeoutError("Max turns or time reached")
+
                     # Check if there are any computer calls
                     output_items = response.get("output", []) or []
-                    computer_calls = [
-                        item for item in output_items if item.get("type") == "computer_call"
-                    ]
+                    computer_calls = []
+
+                    for item in output_items:
+                        match item.get("type"):
+                            case "computer_call":
+                                computer_calls.append(item)
+                            case "message":
+                                for content in item.get("content", []):
+                                    if content.get("type") == "output_text" and (txt := content.get("text")):
+                                        logger.info("Message: %s", txt)
+                                        if self.messages is not None:
+                                            self.messages.append(txt)
 
                     if not computer_calls:
                         logger.info("No computer calls in response, task may be complete.")

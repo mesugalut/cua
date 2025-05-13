@@ -1,7 +1,9 @@
 """Anthropic-specific agent loop implementation."""
 
-import logging
 import asyncio
+import json
+import logging
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, cast
 from anthropic.types.beta import (
     BetaMessage,
@@ -23,7 +25,7 @@ from ...core.types import AgentResponse
 # Anthropic provider-specific imports
 from .api.client import AnthropicClientFactory, BaseAnthropicClient
 from .tools.manager import ToolManager
-from .prompts import SYSTEM_PROMPT
+from .prompts import get_system_prompt
 from .types import LLMProvider
 from .tools import ToolResult
 from .utils import to_anthropic_format, to_agent_response_format
@@ -62,6 +64,7 @@ class AnthropicLoop(BaseLoop):
         max_retries: int = 3,
         retry_delay: float = 1.0,
         save_trajectory: bool = True,
+        save_messages: bool = True,
         **kwargs,
     ):
         """Initialize the Anthropic loop.
@@ -102,6 +105,7 @@ class AnthropicLoop(BaseLoop):
         self.callback_manager = None
         self.queue = asyncio.Queue()  # Initialize queue
         self.loop_task = None  # Store the loop task for cancellation
+        self.messages = [] if save_messages else None
 
         # Initialize handlers
         self.api_handler = AnthropicAPIHandler(self)
@@ -186,6 +190,10 @@ class AnthropicLoop(BaseLoop):
 
             # Wait for loop to complete
             await self.loop_task
+
+            if self.messages is not None:
+                with open(os.path.join(self.run_dir, "messages.json"), "w") as f:
+                    json.dump(self.messages, f)
 
             # Send completion message
             yield {
@@ -289,7 +297,7 @@ class AnthropicLoop(BaseLoop):
                 # Use API handler to make API call with Anthropic format
                 response = await self.api_handler.make_api_call(
                     messages=cast(List[BetaMessageParam], anthropic_messages),
-                    system_prompt=system_content or SYSTEM_PROMPT,
+                    system_prompt=system_content or get_system_prompt(self.computer.os_type),
                 )
 
                 # Use response handler to handle the response and get new messages
@@ -541,6 +549,8 @@ class AnthropicLoop(BaseLoop):
             if text == "<DONE>":
                 return
             logger.info(f"Assistant: {text}")
+            if self.messages is not None:
+                self.messages.append(text)
 
     def _handle_tool_result(self, result, tool_id):
         """Handle tool execution results."""

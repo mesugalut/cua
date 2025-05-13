@@ -11,7 +11,6 @@ from anthropic.types.beta import (
 )
 
 from .types import LLMProvider
-from .prompts import SYSTEM_PROMPT
 
 # Constants
 COMPUTER_USE_BETA_FLAG = "computer-use-2025-01-24"
@@ -31,9 +30,7 @@ class AnthropicAPIHandler:
         """
         self.loop = loop
 
-    async def make_api_call(
-        self, messages: List[BetaMessageParam], system_prompt: str = SYSTEM_PROMPT
-    ) -> BetaMessage:
+    async def make_api_call(self, messages: List[BetaMessageParam], system_prompt: str) -> BetaMessage:
         """Make API call to Anthropic with retry logic.
 
         Args:
