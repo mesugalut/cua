@@ -142,6 +142,8 @@ class ComputerTool(BaseComputerTool, BaseOpenAITool):
                 if button is None:
                     raise ToolError("button is required for click action")
                 return await self.handle_click(button, kwargs["x"], kwargs["y"])
+            elif type == "double_click":
+                return await self.handle_click("double", kwargs["x"], kwargs["y"])
             elif type == "keypress":
                 # Check for keys in kwargs if text is None
                 if text is None:
